@@ -5,6 +5,11 @@ const userSchema = new mongoose.Schema({
   auth0Id: {
     type: String,
     unique: true,
+    sparse: true // Allows null values while maintaining uniqueness
+  },
+  auth0Id: {
+    type: String,
+    unique: true,
     sparse: true
   },
   email: {
@@ -22,7 +27,7 @@ const userSchema = new mongoose.Schema({
   userType: {
     type: String,
     enum: ['vendor', 'supplier'],
-    required: true
+    required: false // Not required for OAuth users
   },
   profile: {
     name: String,
@@ -51,6 +56,10 @@ const userSchema = new mongoose.Schema({
       url: String,
       uploadDate: { type: Date, default: Date.now },
       verified: { type: Boolean, default: false }
+  picture: {
+    type: String,
+    required: false
+  },
     }],
     products: [String],
     minimumOrder: Number,
@@ -71,6 +80,10 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Index for efficient Auth0 lookups
+userSchema.index({ auth0Id: 1 });
+userSchema.index({ email: 1 });
 
 // Index for geospatial queries
 userSchema.index({ "profile.location": "2dsphere" });

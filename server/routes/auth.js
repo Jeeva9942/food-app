@@ -1,9 +1,66 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { auth } = require('express-oauth-server');
 const User = require('../models/User');
+const auth0Middleware = require('../middleware/auth');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+
+// Auth0 profile sync endpoint
+router.post('/profile', auth0Middleware, async (req, res) => {
+  try {
+    const { auth0Id, email, name, picture } = req.body;
+    
+    // Check if user already exists
+    let user = await User.findOne({ auth0Id });
+    
+    if (!user) {
+      // Create new user
+      user = new User({
+        auth0Id,
+        email,
+        name,
+        picture,
+        userType: 'vendor', // Default to vendor, can be updated later
+        isVerified: false,
+        profile: {
+          contactInfo: {
+            phone: '',
+            address: '',
+            city: '',
+            state: '',
+            pincode: ''
+          }
+        }
+      });
+      await user.save();
+    } else {
+      // Update existing user
+      user.email = email;
+      user.name = name;
+      user.picture = picture;
+      await user.save();
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        auth0Id: user.auth0Id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        userType: user.userType,
+        isVerified: user.isVerified,
+        profile: user.profile
+      }
+    });
+  } catch (error) {
+    console.error('Profile sync error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
 // Register
 router.post('/register', async (req, res) => {

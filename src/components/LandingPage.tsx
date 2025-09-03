@@ -1,5 +1,6 @@
 import React from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { ShoppingCart, Users, Shield, Star, TrendingUp, CheckCircle, LogIn } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { ShoppingCart, Store, Shield, Star, Users, TrendingUp } from 'lucide-react';
 
 const LandingPage: React.FC = () => {
@@ -23,6 +24,18 @@ const LandingPage: React.FC = () => {
     });
   };
 
+  const { loginWithRedirect, isAuthenticated } = useAuth();
+
+  const handleGoogleLogin = (userType: 'vendor' | 'supplier') => {
+    loginWithRedirect({
+      authorizationParams: {
+        connection: 'google-oauth2',
+        screen_hint: 'signup',
+        user_type: userType // Pass user type as custom parameter
+      }
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50">
       {/* Header */}
@@ -37,6 +50,15 @@ const LandingPage: React.FC = () => {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-blue-600 bg-clip-text text-transparent">
                   TrustSupply
                 </h1>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => handleGoogleLogin('vendor')}
+                className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-orange-600 transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Login</span>
+              </button>
+            </div>
                 <p className="text-sm text-gray-600 font-medium">Trusted Raw Materials for Street Food</p>
               </div>
             </div>

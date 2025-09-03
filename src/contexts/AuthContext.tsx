@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth0, User } from '@auth0/auth0-react';
 
 interface User {
   id: string;
@@ -14,11 +14,13 @@ interface User {
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: User | undefined;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (userData: any) => Promise<void>;
   logout: () => void;
+  loginWithRedirect: (options?: any) => void;
+  getAccessTokenSilently: () => Promise<string>;
   loading: boolean;
   updateProfile: (profileData: any) => Promise<void>;
 }
@@ -26,7 +28,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const { 
+    user, 
+    isAuthenticated, 
+    isLoading, 
+    loginWithRedirect, 
+    logout: auth0Logout,
+    getAccessTokenSilently 
+  } = useAuth0();
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
@@ -39,6 +48,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   
   const { user: auth0User, isAuthenticated, loginWithPopup, logout: auth0Logout } = useAuth0();
+
+  // Enhanced login function with connection options
+  const login = () => {
+    loginWithRedirect({
+      authorizationParams: {
+        screen_hint: 'signup'
+      }
+    });
+  };
+
+  // Enhanced logout function
+  const logout = () => {
+    auth0Logout({
+      logoutParams: {
+        returnTo: window.location.origin
+      }
+    });
+  };
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -65,19 +92,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await fetch(`${API_URL}/auth/oauth`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          auth0Id: auth0User?.sub,
-          email: auth0User?.email,
-          name: auth0User?.name,
-          userType: 'vendor', // Default to vendor, can be changed later
-          profile: {
-            name: auth0User?.name,
-            businessName: auth0User?.name + "'s Business"
+      const syncUserData = async () => {
+        try {
+          const token = await getAccessTokenSilently();
+          
+          // Store/update user data in backend
+          const response = await fetch('http://localhost:5000/api/auth/profile', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              auth0Id: user.sub,
+              email: user.email,
+              name: user.name,
+              picture: user.picture,
+            }),
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            setUserData(userData);
           }
-        }),
-      });
+        } catch (error) {
+          console.error('Error syncing user data:', error);
+        }
+      };
+      
+      syncUserData();
 
       const data = await response.json();
       
@@ -175,14 +218,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isAuthenticated) {
       auth0Logout({ returnTo: window.location.origin });
     }
-  };
+  }, [isAuthenticated, user, getAccessTokenSilently]);
 
   const value = {
     user,
     token,
     login,
-    register,
+    login,
     logout,
+    loginWithRedirect,
+    getAccessTokenSilently,
     loading,
     updateProfile,
   };
