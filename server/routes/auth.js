@@ -1,64 +1,95 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { auth } = require('express-oauth-server');
 const User = require('../models/User');
-const auth0Middleware = require('../middleware/auth');
-const auth = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Auth0 profile sync endpoint
-router.post('/profile', auth0Middleware, async (req, res) => {
+// OAuth login/register endpoint
+router.post('/oauth', async (req, res) => {
   try {
-    const { auth0Id, email, name, picture } = req.body;
-    
-    // Check if user already exists
-    let user = await User.findOne({ auth0Id });
-    
+    const { auth0Id, email, name, picture, userType } = req.body;
+
+    console.log('OAuth request received:', { auth0Id, email, name, userType });
+
+    let user = await User.findOne({ 
+      $or: [
+        { auth0Id: auth0Id },
+        { email: email }
+      ]
+    });
+
     if (!user) {
       // Create new user
       user = new User({
         auth0Id,
         email,
-        name,
-        picture,
-        userType: 'vendor', // Default to vendor, can be updated later
-        isVerified: false,
+        userType: userType || 'vendor', // Default to vendor
         profile: {
-          contactInfo: {
-            phone: '',
-            address: '',
-            city: '',
-            state: '',
-            pincode: ''
+          name: name || email.split('@')[0],
+          businessName: `${name || 'User'}'s Business`,
+          phone: '',
+          address: '',
+          location: {
+            type: 'Point',
+            coordinates: [77.2090, 28.6139] // Default to Delhi coordinates
           }
-        }
+        },
+        picture,
+        verified: true, // OAuth users are pre-verified
+        isActive: true
       });
+      
       await user.save();
+      console.log('New user created:', user._id);
     } else {
-      // Update existing user
-      user.email = email;
-      user.name = name;
-      user.picture = picture;
+      // Update existing user with OAuth info if needed
+      if (!user.auth0Id) {
+        user.auth0Id = auth0Id;
+      }
+      if (!user.picture && picture) {
+        user.picture = picture;
+      }
+      if (!user.profile.name && name) {
+        user.profile.name = name;
+      }
+      
+      user.verified = true;
       await user.save();
+      console.log('Existing user updated:', user._id);
     }
-    
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id, 
+        userType: user.userType,
+        email: user.email 
+      },
+      process.env.JWT_SECRET || 'fallback-secret-key',
+      { expiresIn: '7d' }
+    );
+
     res.json({
-      success: true,
+      message: 'OAuth authentication successful',
+      token,
       user: {
         id: user._id,
-        auth0Id: user.auth0Id,
         email: user.email,
-        name: user.name,
+        name: user.profile.name,
         picture: user.picture,
         userType: user.userType,
-        isVerified: user.isVerified,
-        profile: user.profile
+        profile: user.profile,
+        verified: user.verified,
+        rating: user.rating
       }
     });
   } catch (error) {
-    console.error('Profile sync error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('OAuth error:', error);
+    res.status(500).json({ 
+      message: 'Server error during OAuth authentication',
+      error: error.message 
+    });
   }
 });
 
@@ -78,7 +109,14 @@ router.post('/register', async (req, res) => {
       email,
       password,
       userType,
-      profile
+      profile: {
+        ...profile,
+        location: {
+          type: 'Point',
+          coordinates: [77.2090, 28.6139] // Default coordinates
+        }
+      },
+      verified: userType === 'vendor' // Vendors are auto-verified, suppliers need manual verification
     });
 
     await user.save();
@@ -86,7 +124,7 @@ router.post('/register', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id, userType: user.userType },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'fallback-secret-key',
       { expiresIn: '7d' }
     );
 
@@ -127,7 +165,7 @@ router.post('/login', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id, userType: user.userType },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'fallback-secret-key',
       { expiresIn: '7d' }
     );
 
@@ -149,60 +187,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// OAuth login/register
-router.post('/oauth', async (req, res) => {
-  try {
-    const { auth0Id, email, name, userType, profile } = req.body;
-
-    let user = await User.findOne({ $or: [{ auth0Id }, { email }] });
-
-    if (!user) {
-      // Create new user
-      user = new User({
-        auth0Id,
-        email,
-        userType,
-        profile: {
-          ...profile,
-          name
-        },
-        verified: true // OAuth users are pre-verified
-      });
-      await user.save();
-    } else if (!user.auth0Id) {
-      // Link existing account with OAuth
-      user.auth0Id = auth0Id;
-      user.verified = true;
-      await user.save();
-    }
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, userType: user.userType },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      message: 'OAuth authentication successful',
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        userType: user.userType,
-        profile: user.profile,
-        verified: user.verified,
-        rating: user.rating
-      }
-    });
-  } catch (error) {
-    console.error('OAuth error:', error);
-    res.status(500).json({ message: 'Server error during OAuth authentication' });
-  }
-});
-
 // Get current user
-router.get('/me', auth, async (req, res) => {
+router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
     res.json(user);
@@ -213,7 +199,7 @@ router.get('/me', auth, async (req, res) => {
 });
 
 // Update profile
-router.put('/profile', auth, async (req, res) => {
+router.put('/profile', authMiddleware, async (req, res) => {
   try {
     const { profile } = req.body;
     
@@ -225,7 +211,14 @@ router.put('/profile', auth, async (req, res) => {
 
     res.json({
       message: 'Profile updated successfully',
-      user
+      user: {
+        id: user._id,
+        email: user.email,
+        userType: user.userType,
+        profile: user.profile,
+        verified: user.verified,
+        rating: user.rating
+      }
     });
   } catch (error) {
     console.error('Profile update error:', error);

@@ -1,40 +1,35 @@
 import React from 'react';
-import { ShoppingCart, Users, Shield, Star, TrendingUp, CheckCircle, LogIn } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { ShoppingCart, Store, Shield, Star, Users, TrendingUp } from 'lucide-react';
+import { ShoppingCart, Store, Shield, Star, Users, TrendingUp, LogIn } from 'lucide-react';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const LandingPage: React.FC = () => {
-  const { loginWithPopup, isAuthenticated } = useAuth0();
+  const { loginWithRedirect, isAuthenticated } = useAuth0();
 
   const handleVendorLogin = () => {
-    loginWithPopup({
+    loginWithRedirect({
       authorizationParams: {
         screen_hint: 'signup',
-        prompt: 'login'
+        user_type: 'vendor'
       }
     });
   };
 
   const handleSupplierLogin = () => {
-    loginWithPopup({
-      authorizationParams: {
-        screen_hint: 'signup',
-        prompt: 'login'
-      }
-    });
-  };
-
-  const { loginWithRedirect, isAuthenticated } = useAuth();
-
-  const handleGoogleLogin = (userType: 'vendor' | 'supplier') => {
     loginWithRedirect({
       authorizationParams: {
-        connection: 'google-oauth2',
         screen_hint: 'signup',
-        user_type: userType // Pass user type as custom parameter
+        user_type: 'supplier'
       }
     });
   };
+
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50">
@@ -50,15 +45,6 @@ const LandingPage: React.FC = () => {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-blue-600 bg-clip-text text-transparent">
                   TrustSupply
                 </h1>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => handleGoogleLogin('vendor')}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-orange-600 transition-colors"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Login</span>
-              </button>
-            </div>
                 <p className="text-sm text-gray-600 font-medium">Trusted Raw Materials for Street Food</p>
               </div>
             </div>
@@ -162,9 +148,10 @@ const LandingPage: React.FC = () => {
                 
                 <button
                   onClick={handleVendorLogin}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-8 rounded-xl font-semibold text-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-8 rounded-xl font-semibold text-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
                 >
-                  Join as Vendor
+                  <LogIn className="h-5 w-5" />
+                  <span>Join as Vendor</span>
                 </button>
               </div>
             </div>
@@ -206,9 +193,10 @@ const LandingPage: React.FC = () => {
                 
                 <button
                   onClick={handleSupplierLogin}
-                  className="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-4 px-8 rounded-xl font-semibold text-lg hover:from-orange-700 hover:to-orange-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  className="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-4 px-8 rounded-xl font-semibold text-lg hover:from-orange-700 hover:to-orange-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
                 >
-                  Join as Supplier
+                  <LogIn className="h-5 w-5" />
+                  <span>Join as Supplier</span>
                 </button>
               </div>
             </div>

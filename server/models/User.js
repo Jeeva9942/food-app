@@ -7,11 +7,6 @@ const userSchema = new mongoose.Schema({
     unique: true,
     sparse: true // Allows null values while maintaining uniqueness
   },
-  auth0Id: {
-    type: String,
-    unique: true,
-    sparse: true
-  },
   email: {
     type: String,
     required: true,
@@ -27,7 +22,7 @@ const userSchema = new mongoose.Schema({
   userType: {
     type: String,
     enum: ['vendor', 'supplier'],
-    required: false // Not required for OAuth users
+    default: 'vendor'
   },
   profile: {
     name: String,
@@ -42,7 +37,7 @@ const userSchema = new mongoose.Schema({
       },
       coordinates: {
         type: [Number],
-        default: [0, 0]
+        default: [77.2090, 28.6139] // Delhi coordinates
       }
     },
     // Vendor specific fields
@@ -56,14 +51,14 @@ const userSchema = new mongoose.Schema({
       url: String,
       uploadDate: { type: Date, default: Date.now },
       verified: { type: Boolean, default: false }
-  picture: {
-    type: String,
-    required: false
-  },
     }],
     products: [String],
     minimumOrder: Number,
     deliveryRadius: Number
+  },
+  picture: {
+    type: String,
+    required: false
   },
   verified: {
     type: Boolean,
@@ -81,11 +76,10 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for efficient Auth0 lookups
+// Indexes for efficient queries
 userSchema.index({ auth0Id: 1 });
 userSchema.index({ email: 1 });
-
-// Index for geospatial queries
+userSchema.index({ userType: 1 });
 userSchema.index({ "profile.location": "2dsphere" });
 
 // Hash password before saving

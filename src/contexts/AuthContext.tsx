@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useAuth0, User } from '@auth0/auth0-react';
+import { useAuth0 } from '@auth0/auth0-react';
 
 interface User {
   id: string;
   email: string;
+  name: string;
+  picture?: string;
   userType: 'vendor' | 'supplier';
   profile: any;
   verified: boolean;
@@ -14,7 +16,7 @@ interface User {
 }
 
 interface AuthContextType {
-  user: User | undefined;
+  user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (userData: any) => Promise<void>;
@@ -23,19 +25,13 @@ interface AuthContextType {
   getAccessTokenSilently: () => Promise<string>;
   loading: boolean;
   updateProfile: (profileData: any) => Promise<void>;
+  isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
-  const { 
-    user, 
-    isAuthenticated, 
-    isLoading, 
-    loginWithRedirect, 
-    logout: auth0Logout,
-    getAccessTokenSilently 
-  } = useAuth0();
+  const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
@@ -47,80 +43,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
-  const { user: auth0User, isAuthenticated, loginWithPopup, logout: auth0Logout } = useAuth0();
-
-  // Enhanced login function with connection options
-  const login = () => {
-    loginWithRedirect({
-      authorizationParams: {
-        screen_hint: 'signup'
-      }
-    });
-  };
-
-  // Enhanced logout function
-  const logout = () => {
-    auth0Logout({
-      logoutParams: {
-        returnTo: window.location.origin
-      }
-    });
-  };
+  const { 
+    user: auth0User, 
+    isAuthenticated, 
+    isLoading,
+    loginWithRedirect, 
+    logout: auth0Logout,
+    getAccessTokenSilently 
+  } = useAuth0();
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-    
-    setLoading(false);
-  }, []);
+    const initializeAuth = async () => {
+      try {
+        // Check for stored user data first
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
+        
+        if (storedToken && storedUser) {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+          setLoading(false);
+          return;
+        }
 
-  useEffect(() => {
-    if (isAuthenticated && auth0User && !user) {
-      handleOAuthLogin();
-    }
-  }, [isAuthenticated, auth0User]);
+        // If Auth0 user is authenticated, sync with backend
+        if (isAuthenticated && auth0User && !isLoading) {
+          await handleOAuthLogin();
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, [isAuthenticated, auth0User, isLoading]);
 
   const handleOAuthLogin = async () => {
     try {
+      if (!auth0User) return;
+
+      // Get Auth0 access token
+      const auth0Token = await getAccessTokenSilently();
+      
+      // Sync user data with backend
       const response = await fetch(`${API_URL}/auth/oauth`, {
         method: 'POST',
         headers: {
-      const syncUserData = async () => {
-        try {
-          const token = await getAccessTokenSilently();
-          
-          // Store/update user data in backend
-          const response = await fetch('http://localhost:5000/api/auth/profile', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              auth0Id: user.sub,
-              email: user.email,
-              name: user.name,
-              picture: user.picture,
-            }),
-          });
-          
-          if (response.ok) {
-            const userData = await response.json();
-            setUserData(userData);
-          }
-        } catch (error) {
-          console.error('Error syncing user data:', error);
-        }
-      };
-      
-      syncUserData();
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${auth0Token}`,
+        },
+        body: JSON.stringify({
+          auth0Id: auth0User.sub,
+          email: auth0User.email,
+          name: auth0User.name,
+          picture: auth0User.picture,
+          userType: 'vendor', // Default to vendor, can be updated later
+        }),
+      });
 
       const data = await response.json();
       
@@ -129,6 +112,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(data.token);
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
+      } else {
+        console.error('OAuth sync error:', data.message);
       }
     } catch (error) {
       console.error('OAuth login error:', error);
@@ -216,20 +201,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('user');
     
     if (isAuthenticated) {
-      auth0Logout({ returnTo: window.location.origin });
+      auth0Logout({ 
+        logoutParams: {
+          returnTo: window.location.origin 
+        }
+      });
     }
-  }, [isAuthenticated, user, getAccessTokenSilently]);
+  };
 
   const value = {
     user,
     token,
     login,
-    login,
+    register,
     logout,
     loginWithRedirect,
     getAccessTokenSilently,
-    loading,
+    loading: loading || isLoading,
     updateProfile,
+    isAuthenticated: isAuthenticated || !!user,
   };
 
   return (
